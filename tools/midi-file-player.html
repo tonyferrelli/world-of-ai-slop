@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web MIDI Player</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        
+        .section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        
+        .file-input {
+            margin-bottom: 10px;
+        }
+        
+        .file-input input[type="file"] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .midi-select {
+            width: 100%;
+            max-width: 400px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        .transport-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .transport-controls button {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.2s;
+        }
+        
+        .transport-controls button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        
+        .transport-controls button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .progress-container {
+            flex: 1;
+            margin: 0 15px;
+            min-width: 200px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+        
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Web MIDI Player</h1>
+        
+        <div class="section">
+            <h3>📁 Select MIDI File</h3>
+            <div class="file-input">
+                <input type="file" id="midiFile" accept=".mid,.midi" />
+            </div>
+        </div>
+        
+        <div class="section">
+            <h3>🎹 MIDI Output Device</h3>
+            <select id="midiOutput" class="midi-select">
+                <option value="">Select MIDI Output Device...</option>
+            </select>
+        </div>
+        
+        <div class="section">
+            <h3>🎮 Transport Controls</h3>
+            <div class="transport-controls">
+                <button id="playBtn" disabled>▶️ Play</button>
+                <button id="pauseBtn" disabled>⏸️ Pause</button>
+                <button id="stopBtn" disabled>⏹️ Stop</button>
+                
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="time-display">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalTime">0:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        class MIDIPlayer {
+            constructor() {
+                this.midiAccess = null;
+                this.midiData = null;
+                this.midiTracks = [];
+                this.currentOutput = null;
+                this.isPlaying = false;
+                this.isPaused = false;
+                this.startTime = 0;
+                this.pausedTime = 0;
+                this.totalDuration = 0;
+                this.scheduledEvents = [];
+                
+                this.initializeElements();
+                this.initializeMIDI();
+            }
+            
+            initializeElements() {
+                this.fileInput = document.getElementById('midiFile');
+                this.outputSelect = document.getElementById('midiOutput');
+                this.playBtn = document.getElementById('playBtn');
+                this.pauseBtn = document.getElementById('pauseBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.progressFill = document.getElementById('progressFill');
+                this.currentTimeEl = document.getElementById('currentTime');
+                this.totalTimeEl = document.getElementById('totalTime');
+                this.statusEl = document.getElementById('status');
+                
+                this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+                this.outputSelect.addEventListener('change', (e) => this.handleOutputSelect(e));
+                this.playBtn.addEventListener('click', () => this.play());
+                this.pauseBtn.addEventListener('click', () => this.pause());
+                this.stopBtn.addEventListener('click', () => this.stop());
+            }
+            
+            async initializeMIDI() {
+                // Check if Web MIDI API is supported
+                if (!navigator.requestMIDIAccess) {
+                    this.showStatus('Web MIDI API not supported in this browser. Please use Chrome, Edge, or Opera.', 'error');
+                    console.error('Web MIDI API not supported');
+                    this.addFallbackOption();
+                    return;
+                }
+
+                try {
+                    this.midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+                    this.populateOutputDevices();
+                    this.showStatus('MIDI access granted!', 'success');
+                    
+                    // Listen for device connection changes
+                    this.midiAccess.onstatechange = () => {
+                        this.populateOutputDevices();
+                    };
+                } catch (error) {
+                    this.showStatus('Failed to access MIDI: ' + error.message + '. Try refreshing and allowing MIDI access.', 'error');
+                    console.error('MIDI Error:', error);
+                    this.addFallbackOption();
+                }
+            }
+            
+            populateOutputDevices() {
+                this.outputSelect.innerHTML = '<option value="">Select MIDI Output Device...</option>';
+                
+                if (!this.midiAccess) {
+                    console.log('No MIDI access available');
+                    return;
+                }
+                
+                let deviceCount = 0;
+                for (let output of this.midiAccess.outputs.values()) {
+                    if (output.state === 'connected') {
+                        const option = document.createElement('option');
+                        option.value = output.id;
+                        option.textContent = `${output.name} (${output.manufacturer || 'Unknown'})`;
+                        this.outputSelect.appendChild(option);
+                        deviceCount++;
+                    }
+                }
+                
+                if (deviceCount === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No MIDI devices found - Check connections';
+                    option.disabled = true;
+                    this.outputSelect.appendChild(option);
+                    this.showStatus('No MIDI devices detected. Please connect a MIDI device and refresh.', 'info');
+                } else {
+                    this.showStatus(`Found ${deviceCount} MIDI device(s)`, 'success');
+                }
+            }
+            
+            handleFileSelect(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        this.midiData = this.parseMIDI(new Uint8Array(e.target.result));
+                        this.calculateDuration();
+                        this.showStatus(`MIDI file loaded: ${file.name}`, 'success');
+                        this.updateControls();
+                    } catch (error) {
+                        this.showStatus('Error parsing MIDI file: ' + error.message, 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+            
+            handleOutputSelect(event) {
+                const outputId = event.target.value;
+                if (outputId) {
+                    this.currentOutput = this.midiAccess.outputs.get(outputId);
+                    this.showStatus(`Selected output: ${this.currentOutput.name}`, 'info');
+                    this.updateControls();
+                } else {
+                    this.currentOutput = null;
+                }
+            }
+            
+            parseMIDI(data) {
+                // Basic MIDI parser - handles format 0 and 1 files
+                const view = new DataView(data.buffer);
+                let offset = 0;
+                
+                // Header chunk
+                const headerChunk = this.readString(data, offset, 4);
+                if (headerChunk !== 'MThd') {
+                    throw new Error('Invalid MIDI file format');
+                }
+                
+                offset += 4;
+                const headerLength = view.getUint32(offset);
+                offset += 4;
+                
+                const format = view.getUint16(offset);
+                offset += 2;
+                const trackCount = view.getUint16(offset);
+                offset += 2;
+                const division = view.getUint16(offset);
+                offset += 2;
+                
+                const tracks = [];
+                
+                // Parse tracks
+                for (let i = 0; i < trackCount; i++) {
+                    const track = this.parseTrack(data, offset);
+                    tracks.push(track.events);
+                    offset = track.nextOffset;
+                }
+                
+                return {
+                    format,
+                    tracks,
+                    division
+                };
+            }
+            
+            parseTrack(data, offset) {
+                const view = new DataView(data.buffer);
+                
+                const trackHeader = this.readString(data, offset, 4);
+                if (trackHeader !== 'MTrk') {
+                    throw new Error('Invalid track header');
+                }
+                
+                offset += 4;
+                const trackLength = view.getUint32(offset);
+                offset += 4;
+                
+                const events = [];
+                const trackEnd = offset + trackLength;
+                let time = 0;
+                let runningStatus = 0;
+                
+                while (offset < trackEnd) {
+                    // Read delta time
+                    const deltaTime = this.readVariableLength(data, offset);
+                    offset = deltaTime.nextOffset;
+                    time += deltaTime.value;
+                    
+                    let status = data[offset];
+                    
+                    // Handle running status
+                    if (status < 0x80) {
+                        status = runningStatus;
+                    } else {
+                        offset++;
+                        runningStatus = status;
+                    }
+                    
+                    const event = { time, status };
+                    
+                    // Parse different event types
+                    if (status >= 0x80 && status <= 0xEF) {
+                        // Channel messages
+                        event.data1 = data[offset++];
+                        if (status < 0xC0 || status >= 0xE0) {
+                            event.data2 = data[offset++];
+                        }
+                    } else if (status === 0xFF) {
+                        // Meta events
+                        event.type = data[offset++];
+                        const length = this.readVariableLength(data, offset);
+                        offset = length.nextOffset;
+                        event.data = Array.from(data.slice(offset, offset + length.value));
+                        offset += length.value;
+                    } else if (status === 0xF0) {
+                        // SysEx events
+                        const length = this.readVariableLength(data, offset);
+                        offset = length.nextOffset;
+                        event.data = Array.from(data.slice(offset, offset + length.value));
+                        offset += length.value;
+                    }
+                    
+                    events.push(event);
+                }
+                
+                return { events, nextOffset: offset };
+            }
+            
+            readString(data, offset, length) {
+                return String.fromCharCode(...Array.from(data.slice(offset, offset + length)));
+            }
+            
+            readVariableLength(data, offset) {
+                let value = 0;
+                let byte;
+                
+                do {
+                    byte = data[offset++];
+                    value = (value << 7) | (byte & 0x7F);
+                } while (byte & 0x80);
+                
+                return { value, nextOffset: offset };
+            }
+            
+            calculateDuration() {
+                if (!this.midiData) return;
+                
+                let maxTime = 0;
+                const ticksPerSecond = this.midiData.division * 2; // Assuming 120 BPM
+                
+                this.midiData.tracks.forEach(track => {
+                    track.forEach(event => {
+                        maxTime = Math.max(maxTime, event.time);
+                    });
+                });
+                
+                this.totalDuration = maxTime / ticksPerSecond;
+                this.totalTimeEl.textContent = this.formatTime(this.totalDuration);
+            }
+            
+            play() {
+                if (!this.midiData || !this.currentOutput) {
+                    this.showStatus('Please select a MIDI file and output device', 'error');
+                    return;
+                }
+                
+                if (this.isPaused) {
+                    this.isPaused = false;
+                    this.startTime = Date.now() - this.pausedTime;
+                } else {
+                    this.startTime = Date.now();
+                    this.pausedTime = 0;
+                }
+                
+                this.isPlaying = true;
+                this.scheduleMIDIEvents();
+                this.updateProgress();
+                this.updateControls();
+                this.showStatus('Playing...', 'info');
+            }
+            
+            pause() {
+                if (this.isPlaying) {
+                    this.isPlaying = false;
+                    this.isPaused = true;
+                    this.pausedTime = Date.now() - this.startTime;
+                    this.clearScheduledEvents();
+                    this.updateControls();
+                    this.showStatus('Paused', 'info');
+                }
+            }
+            
+            stop() {
+                this.isPlaying = false;
+                this.isPaused = false;
+                this.pausedTime = 0;
+                this.clearScheduledEvents();
+                this.sendAllNotesOff();
+                this.progressFill.style.width = '0%';
+                this.currentTimeEl.textContent = '0:00';
+                this.updateControls();
+                this.showStatus('Stopped', 'info');
+            }
+            
+            scheduleMIDIEvents() {
+                if (!this.isPlaying) return;
+                
+                const currentTime = (Date.now() - this.startTime) / 1000;
+                const ticksPerSecond = this.midiData.division * 2;
+                
+                this.midiData.tracks.forEach(track => {
+                    track.forEach(event => {
+                        const eventTime = event.time / ticksPerSecond;
+                        
+                        if (eventTime > currentTime && eventTime <= currentTime + 1) {
+                            const delay = (eventTime - currentTime) * 1000;
+                            
+                            const timeoutId = setTimeout(() => {
+                                if (this.isPlaying && event.status >= 0x80 && event.status <= 0xEF) {
+                                    const midiMessage = [event.status];
+                                    if (event.data1 !== undefined) midiMessage.push(event.data1);
+                                    if (event.data2 !== undefined) midiMessage.push(event.data2);
+                                    
+                                    this.currentOutput.send(midiMessage);
+                                }
+                            }, delay);
+                            
+                            this.scheduledEvents.push(timeoutId);
+                        }
+                    });
+                });
+                
+                // Continue scheduling
+                if (this.isPlaying) {
+                    setTimeout(() => this.scheduleMIDIEvents(), 500);
+                }
+            }
+            
+            clearScheduledEvents() {
+                this.scheduledEvents.forEach(id => clearTimeout(id));
+                this.scheduledEvents = [];
+            }
+            
+            sendAllNotesOff() {
+                if (!this.currentOutput) return;
+                
+                // Send all notes off for all channels
+                for (let channel = 0; channel < 16; channel++) {
+                    this.currentOutput.send([0xB0 + channel, 123, 0]); // All notes off
+                }
+            }
+            
+            updateProgress() {
+                if (!this.isPlaying) return;
+                
+                const currentTime = (Date.now() - this.startTime) / 1000;
+                const progress = Math.min((currentTime / this.totalDuration) * 100, 100);
+                
+                this.progressFill.style.width = progress + '%';
+                this.currentTimeEl.textContent = this.formatTime(currentTime);
+                
+                if (currentTime >= this.totalDuration) {
+                    this.stop();
+                    this.showStatus('Playback finished', 'success');
+                } else {
+                    requestAnimationFrame(() => this.updateProgress());
+                }
+            }
+            
+            updateControls() {
+                const hasFile = !!this.midiData;
+                const hasOutput = !!this.currentOutput;
+                const canPlay = hasFile && hasOutput && !this.isPlaying;
+                
+                this.playBtn.disabled = !canPlay;
+                this.pauseBtn.disabled = !this.isPlaying;
+                this.stopBtn.disabled = !this.isPlaying && !this.isPaused;
+            }
+            
+            formatTime(seconds) {
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = Math.floor(seconds % 60);
+                return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+            }
+            
+            addFallbackOption() {
+                // Add informational message about browser compatibility
+                const fallbackOption = document.createElement('option');
+                fallbackOption.value = '';
+                fallbackOption.textContent = 'Web MIDI not available - Use Chrome/Edge browser';
+                fallbackOption.disabled = true;
+                this.outputSelect.appendChild(fallbackOption);
+                
+                // Add browser compatibility info to status
+                const browserInfo = this.getBrowserInfo();
+                this.showStatus(`Current browser: ${browserInfo}. For MIDI support, please use Chrome, Edge, or Opera.`, 'error');
+            }
+            
+            getBrowserInfo() {
+                const userAgent = navigator.userAgent;
+                if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) return 'Chrome';
+                if (userAgent.includes('Edg')) return 'Edge';
+                if (userAgent.includes('Opera') || userAgent.includes('OPR')) return 'Opera';
+                if (userAgent.includes('Firefox')) return 'Firefox (Limited MIDI support)';
+                if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari (No MIDI support)';
+                return 'Unknown';
+            }
+
+            showStatus(message, type) {
+                this.statusEl.textContent = message;
+                this.statusEl.className = `status ${type}`;
+                this.statusEl.style.display = 'block';
+                
+                // Don't auto-hide error messages about browser compatibility
+                if (type !== 'error' || !message.includes('browser')) {
+                    setTimeout(() => {
+                        this.statusEl.style.display = 'none';
+                    }, 3000);
+                }
+            }
+        }
+        
+        // Initialize the MIDI player when the page loads
+        window.addEventListener('load', () => {
+            new MIDIPlayer();
+        });
+    </script>
+</body>
+</html>
