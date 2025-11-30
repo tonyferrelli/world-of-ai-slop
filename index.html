@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World of AI Slop - Tools Directory</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 0.5rem;
+        }
+        .tools-list {
+            list-style: none;
+            padding: 0;
+        }
+        .tools-list li {
+            margin: 1rem 0;
+            padding: 1rem;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .tools-list a {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 1.1rem;
+        }
+        .tools-list a:hover {
+            text-decoration: underline;
+        }
+        .no-tools {
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>World of AI Slop - Tools Directory</h1>
+    <p>Browse the collection of tools below:</p>
+    <ul class="tools-list" id="toolsList">
+        <!-- Tools will be listed here -->
+    </ul>
+
+    <script>
+        // List of HTML tools in the tools/ directory
+        // Add new tools here as they are created
+        const tools = [
+            { name: 'Sample Tool', file: 'sample-tool.html' }
+        ];
+
+        const toolsList = document.getElementById('toolsList');
+
+        // Validate filename to prevent path traversal
+        function isValidFilename(filename) {
+            return /^[a-zA-Z0-9_-]+\.html$/.test(filename);
+        }
+
+        if (tools.length === 0) {
+            toolsList.innerHTML = '<li class="no-tools">No tools available yet.</li>';
+        } else {
+            tools.forEach(tool => {
+                if (!isValidFilename(tool.file)) {
+                    console.warn('Invalid tool filename:', tool.file);
+                    return;
+                }
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.href = 'tools/' + tool.file;
+                a.textContent = tool.name;
+                li.appendChild(a);
+                toolsList.appendChild(li);
+            });
+        }
+    </script>
+</body>
+</html>
