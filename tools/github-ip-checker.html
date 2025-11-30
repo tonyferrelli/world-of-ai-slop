@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub IP Address Checker</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            line-height: 1.6;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #24292f;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px solid #e1e4e8;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #24292f;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            font-size: 16px;
+            border: 2px solid #d1d9e0;
+            border-radius: 6px;
+            box-sizing: border-box;
+            transition: border-color 0.2s ease;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #0366d6;
+            box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+        }
+        
+        button {
+            background-color: #238636;
+            color: white;
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background-color 0.2s ease;
+            font-weight: 600;
+        }
+        
+        button:hover:not(:disabled) {
+            background-color: #2ea043;
+        }
+        
+        button:disabled {
+            background-color: #8b949e;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        
+        .result.success {
+            background-color: #d4f6d4;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+        
+        .result.error {
+            background-color: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+        
+        .result.no-match {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+        
+        .match-details {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: rgba(255,255,255,0.8);
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        .match-details h3 {
+            margin: 0 0 10px 0;
+            color: #24292f;
+        }
+        
+        .detail-item {
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .detail-label {
+            font-weight: bold;
+            color: #586069;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #586069;
+            font-style: italic;
+        }
+        
+        .github-info {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f1f8ff;
+            border: 1px solid #c8e1ff;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #0366d6;
+        }
+        
+        .example {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #586069;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 GitHub IP Address Checker</h1>
+        
+        <div class="input-section">
+            <label for="ipAddress">Enter IP Address:</label>
+            <input type="text" id="ipAddress" placeholder="e.g., 140.82.112.1" />
+            <div class="example">
+                Examples: 140.82.112.1, 192.30.252.1, 185.199.108.1
+            </div>
+            <button onclick="checkIP()">Check IP Address</button>
+        </div>
+        
+        <div id="result"></div>
+        
+        <div class="github-info">
+            <strong>About:</strong> This tool checks if an IP address belongs to GitHub's infrastructure by querying GitHub's public meta API endpoint. It covers web, git, actions, packages, pages, importer, and other GitHub services.
+        </div>
+    </div>
+
+    <script>
+        // IP address validation regex
+        const IP_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        
+        async function checkIP() {
+            const ipInput = document.getElementById('ipAddress');
+            const resultDiv = document.getElementById('result');
+            const ipAddress = ipInput.value.trim();
+            
+            // Clear previous results
+            resultDiv.innerHTML = '';
+            
+            // Validate IP address format
+            if (!ipAddress) {
+                showResult('Please enter an IP address.', 'error');
+                return;
+            }
+            
+            if (!IP_REGEX.test(ipAddress)) {
+                showResult('Please enter a valid IPv4 address.', 'error');
+                return;
+            }
+            
+            // Show loading state
+            showResult('Checking GitHub IP ranges...', 'loading');
+            
+            try {
+                // Fetch GitHub meta information
+                const response = await fetch('https://api.github.com/meta');
+                
+                if (!response.ok) {
+                    throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+                }
+                
+                const githubMeta = await response.json();
+                
+                // Check IP against all GitHub IP ranges
+                const match = findIPMatch(ipAddress, githubMeta);
+                
+                if (match) {
+                    showMatch(ipAddress, match);
+                } else {
+                    showResult('No match found', 'no-match');
+                }
+                
+            } catch (error) {
+                console.error('Error checking IP:', error);
+                showResult(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function findIPMatch(ipAddress, githubMeta) {
+            const ipNum = ipToNumber(ipAddress);
+            
+            // Define the service categories to check
+            const services = [
+                { name: 'Web', ranges: githubMeta.web || [] },
+                { name: 'Git', ranges: githubMeta.git || [] },
+                { name: 'Actions', ranges: githubMeta.actions || [] },
+                { name: 'Packages', ranges: githubMeta.packages || [] },
+                { name: 'Pages', ranges: githubMeta.pages || [] },
+                { name: 'Importer', ranges: githubMeta.importer || [] },
+                { name: 'Hooks', ranges: githubMeta.hooks || [] },
+                { name: 'API', ranges: githubMeta.api || [] }
+            ];
+            
+            // Check each service's IP ranges
+            for (const service of services) {
+                for (const cidr of service.ranges) {
+                    if (isIPInCIDR(ipNum, cidr)) {
+                        return {
+                            service: service.name,
+                            cidr: cidr,
+                            ip: ipAddress
+                        };
+                    }
+                }
+            }
+            
+            return null;
+        }
+        
+        function ipToNumber(ip) {
+            return ip.split('.').reduce((acc, part) => (acc << 8) + parseInt(part), 0) >>> 0;
+        }
+        
+        function isIPInCIDR(ipNum, cidr) {
+            const [network, prefixLength] = cidr.split('/');
+            const networkNum = ipToNumber(network);
+            const mask = (~0 << (32 - parseInt(prefixLength))) >>> 0;
+            
+            return (ipNum & mask) === (networkNum & mask);
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+        
+        function showMatch(ipAddress, match) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <div class="result success">
+                    ✅ Match found!
+                    <div class="match-details">
+                        <h3>Match Details:</h3>
+                        <div class="detail-item">
+                            <span class="detail-label">IP Address:</span> ${match.ip}
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">CIDR Range:</span> ${match.cidr}
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Service Name:</span> ${match.service}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Allow Enter key to trigger check
+        document.getElementById('ipAddress').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                checkIP();
+            }
+        });
+        
+        // Auto-focus on input field
+        window.addEventListener('load', () => {
+            document.getElementById('ipAddress').focus();
+        });
+    </script>
+</body>
+</html>
