@@ -51,6 +51,49 @@
             max-width: 400px;
         }
         
+        .file-list {
+            margin-top: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: white;
+        }
+        
+        .file-list-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .file-list-item:last-child {
+            border-bottom: none;
+        }
+        
+        .file-list-item:hover {
+            background-color: #f0f8ff;
+        }
+        
+        .file-list-item.selected {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .file-list-item.selected:hover {
+            background-color: #0056b3;
+        }
+        
+        .file-list-empty {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            font-style: italic;
+        }
+        
         .midi-select {
             width: 100%;
             max-width: 400px;
@@ -154,9 +197,12 @@
         <h1>🎵 Web MIDI Player</h1>
         
         <div class="section">
-            <h3>📁 Select MIDI File</h3>
+            <h3>📁 Select MIDI Folder</h3>
             <div class="file-input">
-                <input type="file" id="midiFile" accept=".mid,.midi" />
+                <input type="file" id="midiFolder" webkitdirectory directory multiple />
+            </div>
+            <div id="fileList" class="file-list" style="display: none;">
+                <div class="file-list-empty">No MIDI files found</div>
             </div>
         </div>
         
@@ -204,13 +250,16 @@
                 this.pausedTime = 0;
                 this.totalDuration = 0;
                 this.scheduledEvents = [];
+                this.midiFiles = [];
+                this.selectedFileIndex = -1;
                 
                 this.initializeElements();
                 this.initializeMIDI();
             }
             
             initializeElements() {
-                this.fileInput = document.getElementById('midiFile');
+                this.folderInput = document.getElementById('midiFolder');
+                this.fileListEl = document.getElementById('fileList');
                 this.outputSelect = document.getElementById('midiOutput');
                 this.playBtn = document.getElementById('playBtn');
                 this.pauseBtn = document.getElementById('pauseBtn');
@@ -221,7 +270,7 @@
                 this.totalTimeEl = document.getElementById('totalTime');
                 this.statusEl = document.getElementById('status');
                 
-                this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+                this.folderInput.addEventListener('change', (e) => this.handleFolderSelect(e));
                 this.outputSelect.addEventListener('change', (e) => this.handleOutputSelect(e));
                 this.playBtn.addEventListener('click', () => this.play());
                 this.pauseBtn.addEventListener('click', () => this.pause());
@@ -285,17 +334,77 @@
                 }
             }
             
-            handleFileSelect(event) {
-                const file = event.target.files[0];
+            handleFolderSelect(event) {
+                const files = Array.from(event.target.files);
+                this.midiFiles = files.filter(file => 
+                    file.name.toLowerCase().endsWith('.mid') || 
+                    file.name.toLowerCase().endsWith('.midi')
+                );
+                
+                if (this.midiFiles.length === 0) {
+                    this.showStatus('No MIDI files found in selected folder', 'error');
+                    this.fileListEl.style.display = 'none';
+                    return;
+                }
+                
+                this.renderFileList();
+                this.showStatus(`Found ${this.midiFiles.length} MIDI file(s)`, 'success');
+            }
+            
+            renderFileList() {
+                this.fileListEl.innerHTML = '';
+                this.fileListEl.style.display = 'block';
+                
+                this.midiFiles.forEach((file, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'file-list-item';
+                    item.textContent = `🎵 ${file.name}`;
+                    
+                    item.addEventListener('click', () => {
+                        this.selectFile(index);
+                    });
+                    
+                    item.addEventListener('dblclick', () => {
+                        this.loadAndPlayFile(index);
+                    });
+                    
+                    this.fileListEl.appendChild(item);
+                });
+            }
+            
+            selectFile(index) {
+                // Remove previous selection
+                const items = this.fileListEl.querySelectorAll('.file-list-item');
+                items.forEach(item => item.classList.remove('selected'));
+                
+                // Add selection to clicked item
+                items[index].classList.add('selected');
+                this.selectedFileIndex = index;
+            }
+            
+            loadAndPlayFile(index) {
+                const file = this.midiFiles[index];
                 if (!file) return;
+                
+                // Stop current playback if playing
+                if (this.isPlaying) {
+                    this.stop();
+                }
+                
+                this.selectFile(index);
                 
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
                         this.midiData = this.parseMIDI(new Uint8Array(e.target.result));
                         this.calculateDuration();
-                        this.showStatus(`MIDI file loaded: ${file.name}`, 'success');
+                        this.showStatus(`Loaded: ${file.name}`, 'success');
                         this.updateControls();
+                        
+                        // Auto-play if output device is selected
+                        if (this.currentOutput) {
+                            setTimeout(() => this.play(), 100);
+                        }
                     } catch (error) {
                         this.showStatus('Error parsing MIDI file: ' + error.message, 'error');
                     }
