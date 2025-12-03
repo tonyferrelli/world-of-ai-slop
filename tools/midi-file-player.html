@@ -156,6 +156,136 @@
             border-radius: 4px;
         }
         
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            gap: 15px;
+        }
+        
+        .setting-label {
+            font-weight: 500;
+            color: #555;
+            min-width: 80px;
+        }
+        
+        .setting-control {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .speed-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #e9ecef;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+        }
+        
+        .speed-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .speed-value {
+            min-width: 40px;
+            text-align: right;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .voices-container {
+            margin-top: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+        
+        .voice-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+        
+        .voice-row:last-child {
+            border-bottom: none;
+        }
+        
+        .voice-row:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .voice-checkbox {
+            margin-right: 10px;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+        
+        .voice-channel {
+            font-weight: bold;
+            color: #007bff;
+            min-width: 30px;
+            margin-right: 10px;
+        }
+        
+        .voice-name {
+            flex: 1;
+            color: #555;
+        }
+        
+        .voice-activity {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ccc;
+            margin-left: 10px;
+        }
+        
+        .voice-activity.active {
+            background-color: #28a745;
+        }
+        
+        .gm-reset-btn {
+            width: 100%;
+            padding: 10px 15px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 10px;
+        }
+        
+        .gm-reset-btn:hover {
+            background-color: #c82333;
+        }
+        
         .transport-controls {
             display: flex;
             gap: 10px;
@@ -278,6 +408,25 @@
                         <option value="">Select MIDI Output Device...</option>
                     </select>
                 </div>
+                
+                <div class="section">
+                    <h3>⚙️ MIDI Player Settings</h3>
+                    
+                    <div class="setting-row">
+                        <label class="setting-label">Speed:</label>
+                        <div class="setting-control">
+                            <input type="range" id="speedSlider" class="speed-slider" min="0.2" max="2" step="0.1" value="1" />
+                            <span id="speedValue" class="speed-value">1.0x</span>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="setting-label" style="display: block; margin-bottom: 8px;">Voices:</label>
+                        <div id="voicesContainer" class="voices-container"></div>
+                    </div>
+                    
+                    <button id="gmResetBtn" class="gm-reset-btn">⚠️ GM Reset (Panic)</button>
+                </div>
             </div>
         </div>
         
@@ -322,6 +471,9 @@
                 this.scheduledEvents = [];
                 this.midiFiles = [];
                 this.selectedFileIndex = -1;
+                this.playbackSpeed = 1.0;
+                this.mutedChannels = new Set();
+                this.voiceActivity = new Array(16).fill(false);
                 
                 this.initializeElements();
                 this.initializeMIDI();
@@ -342,6 +494,10 @@
                 this.currentTimeEl = document.getElementById('currentTime');
                 this.totalTimeEl = document.getElementById('totalTime');
                 this.statusEl = document.getElementById('status');
+                this.speedSlider = document.getElementById('speedSlider');
+                this.speedValue = document.getElementById('speedValue');
+                this.voicesContainer = document.getElementById('voicesContainer');
+                this.gmResetBtn = document.getElementById('gmResetBtn');
                 
                 this.folderInput.addEventListener('change', (e) => this.handleFolderSelect(e));
                 this.outputSelect.addEventListener('change', (e) => this.handleOutputSelect(e));
@@ -351,6 +507,10 @@
                 this.stopBtn.addEventListener('click', () => this.stop());
                 this.nextBtn.addEventListener('click', () => this.playNext());
                 this.repeatBtn.addEventListener('click', () => this.toggleRepeat());
+                this.speedSlider.addEventListener('input', (e) => this.handleSpeedChange(e));
+                this.gmResetBtn.addEventListener('click', () => this.gmReset());
+                
+                this.initializeVoicesList();
             }
             
             async initializeMIDI() {
@@ -687,6 +847,86 @@
                 this.showStatus(this.isRepeat ? 'Repeat enabled' : 'Repeat disabled', 'info');
             }
             
+            initializeVoicesList() {
+                for (let i = 0; i < 16; i++) {
+                    const row = document.createElement('div');
+                    row.className = 'voice-row';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'voice-checkbox';
+                    checkbox.checked = true;
+                    checkbox.id = `voice-${i}`;
+                    checkbox.addEventListener('change', () => this.toggleVoiceMute(i, !checkbox.checked));
+                    
+                    const channel = document.createElement('span');
+                    channel.className = 'voice-channel';
+                    channel.textContent = `${i + 1}`;
+                    
+                    const name = document.createElement('span');
+                    name.className = 'voice-name';
+                    name.textContent = `Channel ${i + 1}${i === 9 ? ' (Drums)' : ''}`;
+                    
+                    const activity = document.createElement('div');
+                    activity.className = 'voice-activity';
+                    activity.id = `voice-activity-${i}`;
+                    
+                    row.appendChild(checkbox);
+                    row.appendChild(channel);
+                    row.appendChild(name);
+                    row.appendChild(activity);
+                    
+                    this.voicesContainer.appendChild(row);
+                }
+            }
+            
+            handleSpeedChange(event) {
+                this.playbackSpeed = parseFloat(event.target.value);
+                this.speedValue.textContent = `${this.playbackSpeed.toFixed(1)}x`;
+                
+                // If currently playing, need to restart with new speed
+                if (this.isPlaying) {
+                    const currentProgress = (Date.now() - this.startTime) / 1000;
+                    this.clearScheduledEvents();
+                    this.startTime = Date.now() - (currentProgress * 1000);
+                    this.scheduleMIDIEvents();
+                }
+            }
+            
+            toggleVoiceMute(channel, muted) {
+                if (muted) {
+                    this.mutedChannels.add(channel);
+                    // Send all notes off for this channel
+                    if (this.currentOutput) {
+                        this.currentOutput.send([0xB0 + channel, 123, 0]);
+                    }
+                } else {
+                    this.mutedChannels.delete(channel);
+                }
+            }
+            
+            gmReset() {
+                if (this.isPlaying) {
+                    this.stop();
+                }
+                
+                if (!this.currentOutput) {
+                    this.showStatus('No MIDI output device selected', 'error');
+                    return;
+                }
+                
+                // Send GM Reset SysEx message
+                this.currentOutput.send([0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7]);
+                
+                // Send All Notes Off and Reset All Controllers for all channels
+                for (let channel = 0; channel < 16; channel++) {
+                    this.currentOutput.send([0xB0 + channel, 123, 0]); // All notes off
+                    this.currentOutput.send([0xB0 + channel, 121, 0]); // Reset all controllers
+                }
+                
+                this.showStatus('GM Reset sent (Panic)', 'success');
+            }
+            
             playPrevious() {
                 if (this.midiFiles.length === 0) return;
                 
@@ -712,7 +952,7 @@
             scheduleMIDIEvents() {
                 if (!this.isPlaying) return;
                 
-                const currentTime = (Date.now() - this.startTime) / 1000;
+                const currentTime = ((Date.now() - this.startTime) / 1000) * this.playbackSpeed;
                 const ticksPerSecond = this.midiData.division * 2;
                 
                 this.midiData.tracks.forEach(track => {
@@ -720,15 +960,31 @@
                         const eventTime = event.time / ticksPerSecond;
                         
                         if (eventTime > currentTime && eventTime <= currentTime + 1) {
-                            const delay = (eventTime - currentTime) * 1000;
+                            const delay = ((eventTime - currentTime) * 1000) / this.playbackSpeed;
                             
                             const timeoutId = setTimeout(() => {
                                 if (this.isPlaying && event.status >= 0x80 && event.status <= 0xEF) {
-                                    const midiMessage = [event.status];
-                                    if (event.data1 !== undefined) midiMessage.push(event.data1);
-                                    if (event.data2 !== undefined) midiMessage.push(event.data2);
+                                    const channel = event.status & 0x0F;
                                     
-                                    this.currentOutput.send(midiMessage);
+                                    // Update voice activity indicator
+                                    if ((event.status & 0xF0) === 0x90 && event.data2 > 0) {
+                                        this.voiceActivity[channel] = true;
+                                        const activityEl = document.getElementById(`voice-activity-${channel}`);
+                                        if (activityEl) activityEl.classList.add('active');
+                                    } else if ((event.status & 0xF0) === 0x80 || ((event.status & 0xF0) === 0x90 && event.data2 === 0)) {
+                                        this.voiceActivity[channel] = false;
+                                        const activityEl = document.getElementById(`voice-activity-${channel}`);
+                                        if (activityEl) activityEl.classList.remove('active');
+                                    }
+                                    
+                                    // Don't send if channel is muted
+                                    if (!this.mutedChannels.has(channel)) {
+                                        const midiMessage = [event.status];
+                                        if (event.data1 !== undefined) midiMessage.push(event.data1);
+                                        if (event.data2 !== undefined) midiMessage.push(event.data2);
+                                        
+                                        this.currentOutput.send(midiMessage);
+                                    }
                                 }
                             }, delay);
                             
@@ -760,7 +1016,7 @@
             updateProgress() {
                 if (!this.isPlaying) return;
                 
-                const currentTime = (Date.now() - this.startTime) / 1000;
+                const currentTime = ((Date.now() - this.startTime) / 1000) * this.playbackSpeed;
                 const progress = Math.min((currentTime / this.totalDuration) * 100, 100);
                 
                 this.progressFill.style.width = progress + '%';
