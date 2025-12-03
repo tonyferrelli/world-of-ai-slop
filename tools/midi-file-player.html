@@ -380,6 +380,14 @@
     <div class="container">
         <h1>🎵 Web MIDI Player</h1>
         
+        <div class="section">
+            <h3>🎶 Now Playing</h3>
+            <div id="nowPlaying" class="now-playing">
+                <div class="now-playing-label">Current Track</div>
+                <div id="nowPlayingTitle" class="now-playing-title now-playing-empty">No file loaded</div>
+            </div>
+        </div>
+        
         <div class="grid-container">
             <div>
                 <div class="section">
@@ -395,22 +403,16 @@
             
             <div>
                 <div class="section">
-                    <h3>🎶 Now Playing</h3>
-                    <div id="nowPlaying" class="now-playing">
-                        <div class="now-playing-label">Current Track</div>
-                        <div id="nowPlayingTitle" class="now-playing-title now-playing-empty">No file loaded</div>
-                    </div>
-                </div>
-                
-                <div class="section">
-                    <h3>🎹 MIDI Output Device</h3>
-                    <select id="midiOutput" class="midi-select">
-                        <option value="">Select MIDI Output Device...</option>
-                    </select>
-                </div>
-                
-                <div class="section">
                     <h3>⚙️ MIDI Player Settings</h3>
+                    
+                    <div class="setting-row">
+                        <label class="setting-label">MIDI Output:</label>
+                        <div class="setting-control">
+                            <select id="midiOutput" class="midi-select" style="max-width: none;">
+                                <option value="">Select MIDI Output Device...</option>
+                            </select>
+                        </div>
+                    </div>
                     
                     <div class="setting-row">
                         <label class="setting-label">Speed:</label>
@@ -474,6 +476,9 @@
                 this.playbackSpeed = 1.0;
                 this.mutedChannels = new Set();
                 this.voiceActivity = new Array(16).fill(false);
+                this.channelPrograms = new Array(16).fill(0);
+                this.gmInstruments = [];
+                this.gmDrumKits = [];
                 
                 this.initializeElements();
                 this.initializeMIDI();
@@ -848,6 +853,61 @@
             }
             
             initializeVoicesList() {
+                const gmInstruments = [
+                    // Piano (0-7)
+                    'Acoustic Grand Piano', 'Bright Acoustic Piano', 'Electric Grand Piano', 'Honky-tonk Piano',
+                    'Electric Piano 1', 'Electric Piano 2', 'Harpsichord', 'Clavinet',
+                    // Chromatic Percussion (8-15)
+                    'Celesta', 'Glockenspiel', 'Music Box', 'Vibraphone',
+                    'Marimba', 'Xylophone', 'Tubular Bells', 'Dulcimer',
+                    // Organ (16-23)
+                    'Drawbar Organ', 'Percussive Organ', 'Rock Organ', 'Church Organ',
+                    'Reed Organ', 'Accordion', 'Harmonica', 'Tango Accordion',
+                    // Guitar (24-31)
+                    'Acoustic Guitar (nylon)', 'Acoustic Guitar (steel)', 'Electric Guitar (jazz)', 'Electric Guitar (clean)',
+                    'Electric Guitar (muted)', 'Overdriven Guitar', 'Distortion Guitar', 'Guitar Harmonics',
+                    // Bass (32-39)
+                    'Acoustic Bass', 'Electric Bass (finger)', 'Electric Bass (pick)', 'Fretless Bass',
+                    'Slap Bass 1', 'Slap Bass 2', 'Synth Bass 1', 'Synth Bass 2',
+                    // Strings (40-47)
+                    'Violin', 'Viola', 'Cello', 'Contrabass',
+                    'Tremolo Strings', 'Pizzicato Strings', 'Orchestral Harp', 'Timpani',
+                    // Ensemble (48-55)
+                    'String Ensemble 1', 'String Ensemble 2', 'Synth Strings 1', 'Synth Strings 2',
+                    'Choir Aahs', 'Voice Oohs', 'Synth Voice', 'Orchestra Hit',
+                    // Brass (56-63)
+                    'Trumpet', 'Trombone', 'Tuba', 'Muted Trumpet',
+                    'French Horn', 'Brass Section', 'Synth Brass 1', 'Synth Brass 2',
+                    // Reed (64-71)
+                    'Soprano Sax', 'Alto Sax', 'Tenor Sax', 'Baritone Sax',
+                    'Oboe', 'English Horn', 'Bassoon', 'Clarinet',
+                    // Pipe (72-79)
+                    'Piccolo', 'Flute', 'Recorder', 'Pan Flute',
+                    'Blown Bottle', 'Shakuhachi', 'Whistle', 'Ocarina',
+                    // Synth Lead (80-87)
+                    'Lead 1 (square)', 'Lead 2 (sawtooth)', 'Lead 3 (calliope)', 'Lead 4 (chiff)',
+                    'Lead 5 (charang)', 'Lead 6 (voice)', 'Lead 7 (fifths)', 'Lead 8 (bass + lead)',
+                    // Synth Pad (88-95)
+                    'Pad 1 (new age)', 'Pad 2 (warm)', 'Pad 3 (polysynth)', 'Pad 4 (choir)',
+                    'Pad 5 (bowed)', 'Pad 6 (metallic)', 'Pad 7 (halo)', 'Pad 8 (sweep)',
+                    // Synth Effects (96-103)
+                    'FX 1 (rain)', 'FX 2 (soundtrack)', 'FX 3 (crystal)', 'FX 4 (atmosphere)',
+                    'FX 5 (brightness)', 'FX 6 (goblins)', 'FX 7 (echoes)', 'FX 8 (sci-fi)',
+                    // Ethnic (104-111)
+                    'Sitar', 'Banjo', 'Shamisen', 'Koto',
+                    'Kalimba', 'Bag pipe', 'Fiddle', 'Shanai',
+                    // Percussive (112-119)
+                    'Tinkle Bell', 'Agogo', 'Steel Drums', 'Woodblock',
+                    'Taiko Drum', 'Melodic Tom', 'Synth Drum', 'Reverse Cymbal',
+                    // Sound Effects (120-127)
+                    'Guitar Fret Noise', 'Breath Noise', 'Seashore', 'Bird Tweet',
+                    'Telephone Ring', 'Helicopter', 'Applause', 'Gunshot'
+                ];
+                
+                const gmDrumKits = [
+                    'Standard', 'Room', 'Power', 'Electronic', 'TR-808', 'Jazz', 'Brush', 'Orchestra'
+                ];
+                
                 for (let i = 0; i < 16; i++) {
                     const row = document.createElement('div');
                     row.className = 'voice-row';
@@ -861,11 +921,16 @@
                     
                     const channel = document.createElement('span');
                     channel.className = 'voice-channel';
-                    channel.textContent = `${i + 1}`;
+                    channel.textContent = `${String(i + 1).padStart(2, '0')}`;
                     
                     const name = document.createElement('span');
                     name.className = 'voice-name';
-                    name.textContent = `Channel ${i + 1}${i === 9 ? ' (Drums)' : ''}`;
+                    name.id = `voice-name-${i}`;
+                    if (i === 9) {
+                        name.textContent = 'Standard (Drums)';
+                    } else {
+                        name.textContent = gmInstruments[0]; // Default to Piano
+                    }
                     
                     const activity = document.createElement('div');
                     activity.className = 'voice-activity';
@@ -878,6 +943,11 @@
                     
                     this.voicesContainer.appendChild(row);
                 }
+                
+                // Store GM instrument and drum kit names for later use
+                this.gmInstruments = gmInstruments;
+                this.gmDrumKits = gmDrumKits;
+                this.channelPrograms = new Array(16).fill(0); // Track program changes
             }
             
             handleSpeedChange(event) {
@@ -924,7 +994,33 @@
                     this.currentOutput.send([0xB0 + channel, 121, 0]); // Reset all controllers
                 }
                 
+                // Reset all channel programs to default
+                this.channelPrograms.fill(0);
+                for (let i = 0; i < 16; i++) {
+                    if (i === 9) {
+                        const nameEl = document.getElementById(`voice-name-${i}`);
+                        if (nameEl) nameEl.textContent = 'Standard (Drums)';
+                    } else {
+                        this.updateChannelName(i, 0);
+                    }
+                }
+                
                 this.showStatus('GM Reset sent (Panic)', 'success');
+            }
+            
+            updateChannelName(channel, program) {
+                const nameEl = document.getElementById(`voice-name-${channel}`);
+                if (!nameEl) return;
+                
+                if (channel === 9) {
+                    // Drum channel - map program changes to drum kit types
+                    const drumKitName = this.gmDrumKits[program] || this.gmDrumKits[0];
+                    nameEl.textContent = `${drumKitName} (Drums)`;
+                } else {
+                    // Regular channel - show GM instrument name
+                    const instrumentName = this.gmInstruments[program] || `Program ${program}`;
+                    nameEl.textContent = instrumentName;
+                }
             }
             
             playPrevious() {
@@ -965,13 +1061,20 @@
                             const timeoutId = setTimeout(() => {
                                 if (this.isPlaying && event.status >= 0x80 && event.status <= 0xEF) {
                                     const channel = event.status & 0x0F;
+                                    const statusType = event.status & 0xF0;
+                                    
+                                    // Detect program changes (0xC0-0xCF) to update instrument names
+                                    if (statusType === 0xC0) {
+                                        this.channelPrograms[channel] = event.data1;
+                                        this.updateChannelName(channel, event.data1);
+                                    }
                                     
                                     // Update voice activity indicator
-                                    if ((event.status & 0xF0) === 0x90 && event.data2 > 0) {
+                                    if (statusType === 0x90 && event.data2 > 0) {
                                         this.voiceActivity[channel] = true;
                                         const activityEl = document.getElementById(`voice-activity-${channel}`);
                                         if (activityEl) activityEl.classList.add('active');
-                                    } else if ((event.status & 0xF0) === 0x80 || ((event.status & 0xF0) === 0x90 && event.data2 === 0)) {
+                                    } else if (statusType === 0x80 || (statusType === 0x90 && event.data2 === 0)) {
                                         this.voiceActivity[channel] = false;
                                         const activityEl = document.getElementById(`voice-activity-${channel}`);
                                         if (activityEl) activityEl.classList.remove('active');
