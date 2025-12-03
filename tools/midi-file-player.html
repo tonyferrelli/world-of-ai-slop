@@ -481,6 +481,9 @@
                 this.channelPrograms = new Array(16).fill(0);
                 this.gmInstruments = [];
                 this.gmDrumKits = [];
+                this.currentTempo = 500000; // Default tempo (120 BPM) in microseconds per quarter note
+                this.scheduleLookahead = 0.1; // Schedule events 100ms ahead
+                this.scheduleTimer = null;
                 
                 this.initializeElements();
                 this.initializeMIDI();
@@ -796,16 +799,46 @@
                 if (!this.midiData) return;
                 
                 let maxTime = 0;
-                const ticksPerSecond = this.midiData.division * 2; // Assuming 120 BPM
+                let currentTempo = 500000; // Default 120 BPM in microseconds
+                let currentTime = 0;
+                let currentTicks = 0;
                 
+                // Find tempo changes and calculate actual duration
+                const tempoMap = [];
                 this.midiData.tracks.forEach(track => {
+                    let trackTime = 0;
                     track.forEach(event => {
-                        maxTime = Math.max(maxTime, event.time);
+                        if (event.status === 0xFF && event.type === 0x51 && event.data && event.data.length === 3) {
+                            // Tempo meta event
+                            const tempo = (event.data[0] << 16) | (event.data[1] << 8) | event.data[2];
+                            tempoMap.push({ ticks: event.time, tempo: tempo });
+                        }
+                        trackTime = Math.max(trackTime, event.time);
                     });
+                    maxTime = Math.max(maxTime, trackTime);
                 });
                 
-                this.totalDuration = maxTime / ticksPerSecond;
+                // Sort tempo map by ticks
+                tempoMap.sort((a, b) => a.ticks - b.ticks);
+                
+                // Calculate duration with tempo changes
+                currentTempo = tempoMap.length > 0 ? tempoMap[0].tempo : 500000;
+                let tempoIndex = 0;
+                
+                for (let tick = 0; tick <= maxTime; tick++) {
+                    if (tempoIndex < tempoMap.length - 1 && tick >= tempoMap[tempoIndex + 1].ticks) {
+                        tempoIndex++;
+                        currentTempo = tempoMap[tempoIndex].tempo;
+                    }
+                }
+                
+                // Convert ticks to seconds
+                const microsecondsPerTick = currentTempo / this.midiData.division;
+                this.totalDuration = (maxTime * microsecondsPerTick) / 1000000;
                 this.totalTimeEl.textContent = this.formatTime(this.totalDuration);
+                
+                // Store tempo map for playback
+                this.tempoMap = tempoMap.length > 0 ? tempoMap : [{ ticks: 0, tempo: 500000 }];
             }
             
             preScanProgramChanges() {
@@ -842,6 +875,36 @@
                         this.updateChannelName(i, program);
                     }
                 }
+            }
+            
+            ticksToSeconds(ticks) {
+                if (!this.tempoMap || this.tempoMap.length === 0) {
+                    // Fallback to 120 BPM
+                    return (ticks * 500000) / (this.midiData.division * 1000000);
+                }
+                
+                let seconds = 0;
+                let currentTicks = 0;
+                let currentTempo = this.tempoMap[0].tempo;
+                
+                for (let i = 0; i < this.tempoMap.length; i++) {
+                    const nextTicks = (i < this.tempoMap.length - 1) ? this.tempoMap[i + 1].ticks : ticks;
+                    const ticksInSection = Math.min(nextTicks, ticks) - currentTicks;
+                    
+                    if (ticksInSection > 0) {
+                        const microsecondsPerTick = currentTempo / this.midiData.division;
+                        seconds += (ticksInSection * microsecondsPerTick) / 1000000;
+                    }
+                    
+                    if (ticks <= nextTicks) break;
+                    
+                    currentTicks = nextTicks;
+                    if (i < this.tempoMap.length - 1) {
+                        currentTempo = this.tempoMap[i + 1].tempo;
+                    }
+                }
+                
+                return seconds;
             }
             
             play() {
@@ -1136,62 +1199,84 @@
                 if (!this.isPlaying) return;
                 
                 const currentTime = ((Date.now() - this.startTime) / 1000) * this.playbackSpeed;
-                const ticksPerSecond = this.midiData.division * 2;
+                const scheduleUntil = currentTime + this.scheduleLookahead;
                 
+                // Flatten all events with accurate timing
+                const allEvents = [];
                 this.midiData.tracks.forEach(track => {
                     track.forEach(event => {
-                        const eventTime = event.time / ticksPerSecond;
-                        
-                        if (eventTime > currentTime && eventTime <= currentTime + 1) {
-                            const delay = ((eventTime - currentTime) * 1000) / this.playbackSpeed;
-                            
-                            const timeoutId = setTimeout(() => {
-                                if (this.isPlaying && event.status >= 0x80 && event.status <= 0xEF) {
-                                    const channel = event.status & 0x0F;
-                                    const statusType = event.status & 0xF0;
-                                    
-                                    // Detect program changes (0xC0-0xCF) to update instrument names
-                                    if (statusType === 0xC0) {
-                                        this.channelPrograms[channel] = event.data1;
-                                        this.updateChannelName(channel, event.data1);
-                                    }
-                                    
-                                    // Update voice activity indicator
-                                    if (statusType === 0x90 && event.data2 > 0) {
-                                        this.voiceActivity[channel] = true;
-                                        const activityEl = document.getElementById(`voice-activity-${channel}`);
-                                        if (activityEl) activityEl.classList.add('active');
-                                    } else if (statusType === 0x80 || (statusType === 0x90 && event.data2 === 0)) {
-                                        this.voiceActivity[channel] = false;
-                                        const activityEl = document.getElementById(`voice-activity-${channel}`);
-                                        if (activityEl) activityEl.classList.remove('active');
-                                    }
-                                    
-                                    // Don't send if channel is muted
-                                    if (!this.mutedChannels.has(channel)) {
-                                        const midiMessage = [event.status];
-                                        if (event.data1 !== undefined) midiMessage.push(event.data1);
-                                        if (event.data2 !== undefined) midiMessage.push(event.data2);
-                                        
-                                        this.currentOutput.send(midiMessage);
-                                    }
-                                }
-                            }, delay);
-                            
-                            this.scheduledEvents.push(timeoutId);
+                        if (event.status >= 0x80 && event.status <= 0xEF) {
+                            const eventTime = this.ticksToSeconds(event.time);
+                            if (eventTime > currentTime && eventTime <= scheduleUntil) {
+                                allEvents.push({
+                                    time: eventTime,
+                                    status: event.status,
+                                    data1: event.data1,
+                                    data2: event.data2
+                                });
+                            }
                         }
                     });
                 });
                 
-                // Continue scheduling
+                // Sort events by time
+                allEvents.sort((a, b) => a.time - b.time);
+                
+                // Schedule each event
+                allEvents.forEach(event => {
+                    const delay = ((event.time - currentTime) * 1000) / this.playbackSpeed;
+                    
+                    const timeoutId = setTimeout(() => {
+                        if (!this.isPlaying) return;
+                        
+                        const channel = event.status & 0x0F;
+                        const statusType = event.status & 0xF0;
+                        
+                        // Detect program changes to update instrument names
+                        if (statusType === 0xC0) {
+                            this.channelPrograms[channel] = event.data1;
+                            this.updateChannelName(channel, event.data1);
+                        }
+                        
+                        // Update voice activity indicator
+                        if (statusType === 0x90 && event.data2 > 0) {
+                            this.voiceActivity[channel] = true;
+                            const activityEl = document.getElementById(`voice-activity-${channel}`);
+                            if (activityEl) activityEl.classList.add('active');
+                        } else if (statusType === 0x80 || (statusType === 0x90 && event.data2 === 0)) {
+                            this.voiceActivity[channel] = false;
+                            const activityEl = document.getElementById(`voice-activity-${channel}`);
+                            if (activityEl) activityEl.classList.remove('active');
+                        }
+                        
+                        // Send MIDI message if channel not muted
+                        if (!this.mutedChannels.has(channel) && this.currentOutput) {
+                            const midiMessage = [event.status];
+                            if (event.data1 !== undefined) midiMessage.push(event.data1);
+                            if (event.data2 !== undefined) midiMessage.push(event.data2);
+                            
+                            // Use high-precision timestamp if available
+                            const timestamp = performance.now();
+                            this.currentOutput.send(midiMessage, timestamp);
+                        }
+                    }, Math.max(0, delay));
+                    
+                    this.scheduledEvents.push(timeoutId);
+                });
+                
+                // Schedule next batch
                 if (this.isPlaying) {
-                    setTimeout(() => this.scheduleMIDIEvents(), 500);
+                    this.scheduleTimer = setTimeout(() => this.scheduleMIDIEvents(), this.scheduleLookahead * 500);
                 }
             }
             
             clearScheduledEvents() {
                 this.scheduledEvents.forEach(id => clearTimeout(id));
                 this.scheduledEvents = [];
+                if (this.scheduleTimer) {
+                    clearTimeout(this.scheduleTimer);
+                    this.scheduleTimer = null;
+                }
             }
             
             sendAllNotesOff() {
