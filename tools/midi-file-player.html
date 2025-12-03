@@ -646,6 +646,10 @@
                         this.midiData = this.parseMIDI(new Uint8Array(e.target.result));
                         this.calculateDuration();
                         this.updateNowPlaying(file.name);
+                        
+                        // Pre-scan the MIDI file for initial program changes
+                        this.preScanProgramChanges();
+                        
                         this.showStatus(`Loaded: ${file.name}`, 'success');
                         this.updateControls();
                         
@@ -804,6 +808,42 @@
                 this.totalTimeEl.textContent = this.formatTime(this.totalDuration);
             }
             
+            preScanProgramChanges() {
+                if (!this.midiData) return;
+                
+                // Reset all channels to default first
+                this.channelPrograms.fill(0);
+                const foundPrograms = new Array(16).fill(false);
+                
+                // Scan all tracks for program change events
+                this.midiData.tracks.forEach(track => {
+                    track.forEach(event => {
+                        if (event.status >= 0xC0 && event.status <= 0xCF) {
+                            // Program change event
+                            const channel = event.status & 0x0F;
+                            if (!foundPrograms[channel]) {
+                                // Use the first program change found for each channel
+                                this.channelPrograms[channel] = event.data1;
+                                foundPrograms[channel] = true;
+                            }
+                        }
+                    });
+                });
+                
+                // Update the display for all channels
+                for (let i = 0; i < 16; i++) {
+                    if (i === 9) {
+                        const program = foundPrograms[9] ? this.channelPrograms[9] : 0;
+                        const drumKitName = this.gmDrumKits[program] || this.gmDrumKits[0];
+                        const nameEl = document.getElementById(`voice-name-${i}`);
+                        if (nameEl) nameEl.textContent = `${drumKitName} (Drums)`;
+                    } else {
+                        const program = foundPrograms[i] ? this.channelPrograms[i] : 0;
+                        this.updateChannelName(i, program);
+                    }
+                }
+            }
+            
             play() {
                 if (!this.midiData || !this.currentOutput) {
                     this.showStatus('Please select a MIDI file and output device', 'error');
@@ -844,6 +884,14 @@
                 this.sendAllNotesOff();
                 this.progressFill.style.width = '0%';
                 this.currentTimeEl.textContent = '0:00';
+                
+                // Clear voice activity indicators
+                for (let i = 0; i < 16; i++) {
+                    this.voiceActivity[i] = false;
+                    const activityEl = document.getElementById(`voice-activity-${i}`);
+                    if (activityEl) activityEl.classList.remove('active');
+                }
+                
                 this.updateControls();
                 this.showStatus('Stopped', 'info');
             }
