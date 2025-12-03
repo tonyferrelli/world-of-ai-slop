@@ -216,9 +216,11 @@
         <div class="section">
             <h3>🎮 Transport Controls</h3>
             <div class="transport-controls">
+                <button id="prevBtn" disabled>⏮️ Previous</button>
                 <button id="playBtn" disabled>▶️ Play</button>
                 <button id="pauseBtn" disabled>⏸️ Pause</button>
                 <button id="stopBtn" disabled>⏹️ Stop</button>
+                <button id="nextBtn" disabled>⏭️ Next</button>
                 <button id="repeatBtn" disabled>🔁 Repeat</button>
                 
                 <div class="progress-container">
@@ -261,9 +263,11 @@
                 this.folderInput = document.getElementById('midiFolder');
                 this.fileListEl = document.getElementById('fileList');
                 this.outputSelect = document.getElementById('midiOutput');
+                this.prevBtn = document.getElementById('prevBtn');
                 this.playBtn = document.getElementById('playBtn');
                 this.pauseBtn = document.getElementById('pauseBtn');
                 this.stopBtn = document.getElementById('stopBtn');
+                this.nextBtn = document.getElementById('nextBtn');
                 this.repeatBtn = document.getElementById('repeatBtn');
                 this.progressFill = document.getElementById('progressFill');
                 this.currentTimeEl = document.getElementById('currentTime');
@@ -272,9 +276,11 @@
                 
                 this.folderInput.addEventListener('change', (e) => this.handleFolderSelect(e));
                 this.outputSelect.addEventListener('change', (e) => this.handleOutputSelect(e));
+                this.prevBtn.addEventListener('click', () => this.playPrevious());
                 this.playBtn.addEventListener('click', () => this.play());
                 this.pauseBtn.addEventListener('click', () => this.pause());
                 this.stopBtn.addEventListener('click', () => this.stop());
+                this.nextBtn.addEventListener('click', () => this.playNext());
                 this.repeatBtn.addEventListener('click', () => this.toggleRepeat());
             }
             
@@ -606,6 +612,28 @@
                 this.showStatus(this.isRepeat ? 'Repeat enabled' : 'Repeat disabled', 'info');
             }
             
+            playPrevious() {
+                if (this.midiFiles.length === 0) return;
+                
+                let newIndex = this.selectedFileIndex - 1;
+                if (newIndex < 0) {
+                    newIndex = this.midiFiles.length - 1; // Wrap to last file
+                }
+                
+                this.loadAndPlayFile(newIndex);
+            }
+            
+            playNext() {
+                if (this.midiFiles.length === 0) return;
+                
+                let newIndex = this.selectedFileIndex + 1;
+                if (newIndex >= this.midiFiles.length) {
+                    newIndex = 0; // Wrap to first file
+                }
+                
+                this.loadAndPlayFile(newIndex);
+            }
+            
             scheduleMIDIEvents() {
                 if (!this.isPlaying) return;
                 
@@ -687,11 +715,14 @@
                 const hasFile = !!this.midiData;
                 const hasOutput = !!this.currentOutput;
                 const canPlay = hasFile && hasOutput && !this.isPlaying;
+                const hasMultipleFiles = this.midiFiles.length > 0;
                 
                 this.playBtn.disabled = !canPlay;
                 this.pauseBtn.disabled = !this.isPlaying;
                 this.stopBtn.disabled = !this.isPlaying && !this.isPaused;
                 this.repeatBtn.disabled = !hasFile;
+                this.prevBtn.disabled = !hasMultipleFiles;
+                this.nextBtn.disabled = !hasMultipleFiles;
             }
             
             formatTime(seconds) {
