@@ -7,10 +7,23 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1400px;
+            width: 80%;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
+        }
+        
+        @media (max-width: 1200px) {
+            body {
+                width: 90%;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                width: 95%;
+            }
         }
         
         .container {
@@ -24,6 +37,19 @@
             text-align: center;
             color: #333;
             margin-bottom: 30px;
+        }
+        
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+        
+        @media (max-width: 768px) {
+            .grid-container {
+                grid-template-columns: 1fr;
+            }
         }
         
         .section {
@@ -90,6 +116,34 @@
         .file-list-empty {
             padding: 20px;
             text-align: center;
+            color: #999;
+            font-style: italic;
+        }
+        
+        .now-playing {
+            padding: 15px;
+            background-color: #e7f3ff;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            min-height: 60px;
+        }
+        
+        .now-playing-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .now-playing-title {
+            font-size: 16px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .now-playing-empty {
             color: #999;
             font-style: italic;
         }
@@ -196,21 +250,35 @@
     <div class="container">
         <h1>🎵 Web MIDI Player</h1>
         
-        <div class="section">
-            <h3>📁 Select MIDI Folder</h3>
-            <div class="file-input">
-                <input type="file" id="midiFolder" webkitdirectory directory multiple />
+        <div class="grid-container">
+            <div>
+                <div class="section">
+                    <h3>📁 Select MIDI Folder</h3>
+                    <div class="file-input">
+                        <input type="file" id="midiFolder" webkitdirectory directory multiple />
+                    </div>
+                    <div id="fileList" class="file-list" style="display: none;">
+                        <div class="file-list-empty">No MIDI files found</div>
+                    </div>
+                </div>
             </div>
-            <div id="fileList" class="file-list" style="display: none;">
-                <div class="file-list-empty">No MIDI files found</div>
+            
+            <div>
+                <div class="section">
+                    <h3>🎶 Now Playing</h3>
+                    <div id="nowPlaying" class="now-playing">
+                        <div class="now-playing-label">Current Track</div>
+                        <div id="nowPlayingTitle" class="now-playing-title now-playing-empty">No file loaded</div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>🎹 MIDI Output Device</h3>
+                    <select id="midiOutput" class="midi-select">
+                        <option value="">Select MIDI Output Device...</option>
+                    </select>
+                </div>
             </div>
-        </div>
-        
-        <div class="section">
-            <h3>🎹 MIDI Output Device</h3>
-            <select id="midiOutput" class="midi-select">
-                <option value="">Select MIDI Output Device...</option>
-            </select>
         </div>
         
         <div class="section">
@@ -262,6 +330,7 @@
             initializeElements() {
                 this.folderInput = document.getElementById('midiFolder');
                 this.fileListEl = document.getElementById('fileList');
+                this.nowPlayingTitle = document.getElementById('nowPlayingTitle');
                 this.outputSelect = document.getElementById('midiOutput');
                 this.prevBtn = document.getElementById('prevBtn');
                 this.playBtn = document.getElementById('playBtn');
@@ -404,6 +473,7 @@
                     try {
                         this.midiData = this.parseMIDI(new Uint8Array(e.target.result));
                         this.calculateDuration();
+                        this.updateNowPlaying(file.name);
                         this.showStatus(`Loaded: ${file.name}`, 'success');
                         this.updateControls();
                         
@@ -604,6 +674,11 @@
                 this.currentTimeEl.textContent = '0:00';
                 this.updateControls();
                 this.showStatus('Stopped', 'info');
+            }
+            
+            updateNowPlaying(filename) {
+                this.nowPlayingTitle.textContent = filename;
+                this.nowPlayingTitle.classList.remove('now-playing-empty');
             }
             
             toggleRepeat() {
