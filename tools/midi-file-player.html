@@ -333,6 +333,8 @@
             background-color: #e9ecef;
             border-radius: 3px;
             overflow: hidden;
+            cursor: pointer;
+            position: relative;
         }
         
         .progress-fill {
@@ -388,6 +390,28 @@
             </div>
         </div>
         
+        <div class="section">
+            <h3>🎮 Transport Controls</h3>
+            <div class="transport-controls">
+                <button id="prevBtn" disabled>⏮️ Previous</button>
+                <button id="playBtn" disabled>▶️ Play</button>
+                <button id="pauseBtn" disabled>⏸️ Pause</button>
+                <button id="stopBtn" disabled>⏹️ Stop</button>
+                <button id="nextBtn" disabled>⏭️ Next</button>
+                <button id="repeatBtn" disabled>🔁 Repeat</button>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="time-display">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalTime">0:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="grid-container">
             <div>
                 <div class="section">
@@ -428,28 +452,6 @@
                     </div>
                     
                     <button id="gmResetBtn" class="gm-reset-btn">⚠️ GM Reset (Panic)</button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h3>🎮 Transport Controls</h3>
-            <div class="transport-controls">
-                <button id="prevBtn" disabled>⏮️ Previous</button>
-                <button id="playBtn" disabled>▶️ Play</button>
-                <button id="pauseBtn" disabled>⏸️ Pause</button>
-                <button id="stopBtn" disabled>⏹️ Stop</button>
-                <button id="nextBtn" disabled>⏭️ Next</button>
-                <button id="repeatBtn" disabled>🔁 Repeat</button>
-                
-                <div class="progress-container">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill"></div>
-                    </div>
-                    <div class="time-display">
-                        <span id="currentTime">0:00</span>
-                        <span id="totalTime">0:00</span>
-                    </div>
                 </div>
             </div>
         </div>
@@ -495,6 +497,7 @@
                 this.stopBtn = document.getElementById('stopBtn');
                 this.nextBtn = document.getElementById('nextBtn');
                 this.repeatBtn = document.getElementById('repeatBtn');
+                this.progressBar = document.getElementById('progressBar');
                 this.progressFill = document.getElementById('progressFill');
                 this.currentTimeEl = document.getElementById('currentTime');
                 this.totalTimeEl = document.getElementById('totalTime');
@@ -514,6 +517,7 @@
                 this.repeatBtn.addEventListener('click', () => this.toggleRepeat());
                 this.speedSlider.addEventListener('input', (e) => this.handleSpeedChange(e));
                 this.gmResetBtn.addEventListener('click', () => this.gmReset());
+                this.progressBar.addEventListener('click', (e) => this.handleProgressBarClick(e));
                 
                 this.initializeVoicesList();
             }
@@ -580,6 +584,9 @@
                     file.name.toLowerCase().endsWith('.mid') || 
                     file.name.toLowerCase().endsWith('.midi')
                 );
+                
+                // Sort files alphabetically by name
+                this.midiFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
                 
                 if (this.midiFiles.length === 0) {
                     this.showStatus('No MIDI files found in selected folder', 'error');
@@ -1020,6 +1027,38 @@
                     // Regular channel - show GM instrument name
                     const instrumentName = this.gmInstruments[program] || `Program ${program}`;
                     nameEl.textContent = instrumentName;
+                }
+            }
+            
+            handleProgressBarClick(event) {
+                if (!this.midiData || !this.totalDuration) return;
+                
+                const rect = this.progressBar.getBoundingClientRect();
+                const clickX = event.clientX - rect.left;
+                const percentage = clickX / rect.width;
+                const newTime = percentage * this.totalDuration;
+                
+                // Stop current playback
+                this.clearScheduledEvents();
+                this.sendAllNotesOff();
+                
+                // Set new start time
+                const wasPlaying = this.isPlaying;
+                this.startTime = Date.now() - (newTime * 1000) / this.playbackSpeed;
+                this.pausedTime = newTime * 1000;
+                
+                // Update progress display
+                this.progressFill.style.width = (percentage * 100) + '%';
+                this.currentTimeEl.textContent = this.formatTime(newTime);
+                
+                // Resume playback if it was playing
+                if (wasPlaying) {
+                    this.isPlaying = true;
+                    this.isPaused = false;
+                    this.scheduleMIDIEvents();
+                    this.updateProgress();
+                } else if (this.isPaused) {
+                    this.pausedTime = newTime * 1000;
                 }
             }
             
