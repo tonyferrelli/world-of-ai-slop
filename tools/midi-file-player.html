@@ -1197,77 +1197,74 @@
             
             scheduleMIDIEvents() {
                 if (!this.isPlaying) return;
-                
-                const currentTime = ((Date.now() - this.startTime) / 1000) * this.playbackSpeed;
-                const scheduleUntil = currentTime + this.scheduleLookahead;
-                
-                // Flatten all events with accurate timing
+
+                // Clear any previous scheduled events
+                this.clearScheduledEvents();
+
+                // Get the start time in milliseconds
+                const startTimeMs = performance.now();
+                const startTimeSec = ((Date.now() - this.startTime) / 1000) * this.playbackSpeed;
+
+                // Flatten all MIDI events with their absolute times
                 const allEvents = [];
                 this.midiData.tracks.forEach(track => {
                     track.forEach(event => {
                         if (event.status >= 0x80 && event.status <= 0xEF) {
                             const eventTime = this.ticksToSeconds(event.time);
-                            if (eventTime > currentTime && eventTime <= scheduleUntil) {
-                                allEvents.push({
-                                    time: eventTime,
-                                    status: event.status,
-                                    data1: event.data1,
-                                    data2: event.data2
-                                });
-                            }
+                            allEvents.push({
+                                time: eventTime,
+                                status: event.status,
+                                data1: event.data1,
+                                data2: event.data2
+                            });
                         }
                     });
                 });
-                
+
                 // Sort events by time
                 allEvents.sort((a, b) => a.time - b.time);
-                
-                // Schedule each event
+
+                // Schedule all events up front using Web MIDI API timestamps
                 allEvents.forEach(event => {
-                    const delay = ((event.time - currentTime) * 1000) / this.playbackSpeed;
-                    
-                    const timeoutId = setTimeout(() => {
-                        if (!this.isPlaying) return;
-                        
-                        const channel = event.status & 0x0F;
-                        const statusType = event.status & 0xF0;
-                        
-                        // Detect program changes to update instrument names
-                        if (statusType === 0xC0) {
+                    if (event.time < startTimeSec) return; // Skip events before current position
+
+                    const channel = event.status & 0x0F;
+                    const statusType = event.status & 0xF0;
+
+                    // Detect program changes to update instrument names
+                    if (statusType === 0xC0) {
+                        setTimeout(() => {
                             this.channelPrograms[channel] = event.data1;
                             this.updateChannelName(channel, event.data1);
-                        }
-                        
-                        // Update voice activity indicator
-                        if (statusType === 0x90 && event.data2 > 0) {
+                        }, (event.time - startTimeSec) * 1000 / this.playbackSpeed);
+                    }
+
+                    // Update voice activity indicator
+                    if (statusType === 0x90 && event.data2 > 0) {
+                        setTimeout(() => {
                             this.voiceActivity[channel] = true;
                             const activityEl = document.getElementById(`voice-activity-${channel}`);
                             if (activityEl) activityEl.classList.add('active');
-                        } else if (statusType === 0x80 || (statusType === 0x90 && event.data2 === 0)) {
+                        }, (event.time - startTimeSec) * 1000 / this.playbackSpeed);
+                    } else if (statusType === 0x80 || (statusType === 0x90 && event.data2 === 0)) {
+                        setTimeout(() => {
                             this.voiceActivity[channel] = false;
                             const activityEl = document.getElementById(`voice-activity-${channel}`);
                             if (activityEl) activityEl.classList.remove('active');
-                        }
-                        
-                        // Send MIDI message if channel not muted
-                        if (!this.mutedChannels.has(channel) && this.currentOutput) {
-                            const midiMessage = [event.status];
-                            if (event.data1 !== undefined) midiMessage.push(event.data1);
-                            if (event.data2 !== undefined) midiMessage.push(event.data2);
-                            
-                            // Use high-precision timestamp if available
-                            const timestamp = performance.now();
-                            this.currentOutput.send(midiMessage, timestamp);
-                        }
-                    }, Math.max(0, delay));
-                    
-                    this.scheduledEvents.push(timeoutId);
+                        }, (event.time - startTimeSec) * 1000 / this.playbackSpeed);
+                    }
+
+                    // Send MIDI message if channel not muted
+                    if (!this.mutedChannels.has(channel) && this.currentOutput) {
+                        const midiMessage = [event.status];
+                        if (event.data1 !== undefined) midiMessage.push(event.data1);
+                        if (event.data2 !== undefined) midiMessage.push(event.data2);
+
+                        // Calculate the timestamp for the MIDI event
+                        const timestamp = startTimeMs + ((event.time - startTimeSec) * 1000 / this.playbackSpeed);
+                        this.currentOutput.send(midiMessage, timestamp);
+                    }
                 });
-                
-                // Schedule next batch
-                if (this.isPlaying) {
-                    this.scheduleTimer = setTimeout(() => this.scheduleMIDIEvents(), this.scheduleLookahead * 500);
-                }
             }
             
             clearScheduledEvents() {
